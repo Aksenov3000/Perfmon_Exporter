@@ -26,6 +26,7 @@ namespace Perfmon.Exporter.Core
 			Config = config;
 			Logger = logger;
 
+			logger.LogDebug($"Parent.InstaceNames.Length={Parent.InstaceNames.Length} Parent.Config.SplitInstances={Parent.Config.SplitInstances}");
 			if (Parent.InstaceNames.Length == 0)
 			{
 				Instances = new List<PerformanceCounter>();
@@ -43,13 +44,25 @@ namespace Perfmon.Exporter.Core
 					Instances.Add(new PerformanceCounter(Parent.Config.Name, Config.Name, "_Total"));
 				}
 			}
+			logger.LogDebug($"Instances.Count={Instances.Count}");
+
 			CounterName = mainConfig.Prefix + "_" + Parent.Config.Prefix + "_" + Config.Prefix;
 			CounterHelp = "# HELP " + CounterName + " " + (Config.CustomDescription ? Config.Description : Instances[0].CounterHelp);
 			CounterType = "# TYPE " + CounterName + " " + Config.Kind;
 			foreach (PerformanceCounter counter in Instances)
 			{
-				InstanceFullNames.Add(CounterName + (counter.InstanceName == "" ? "" : " {" + (Parent.Config.InstanceLabel == "" ? "instance" : Parent.Config.InstanceLabel) + "=\"" + counter.InstanceName + "\"}"));
-				counter.NextValue();
+				try
+				{
+					string instanceFullName = CounterName + (counter.InstanceName == "" ? "" : " {" + (Parent.Config.InstanceLabel == "" ? "instance" : Parent.Config.InstanceLabel) + "=\"" + counter.InstanceName + "\"}");
+					InstanceFullNames.Add(instanceFullName);
+					float val = counter.NextValue();
+					logger.LogDebug($"instanceFullName={instanceFullName} Val={val}");
+				}
+				catch (Exception ex)
+				{
+					Logger.LogError($"Cant Init counter. counter.InstanceName=[{counter.InstanceName}] counter.CategoryName=[{counter.CategoryName}] counter.CounterName=[{counter.CounterName}] {ex}");
+					throw;
+				}
 			}
 		}
 
@@ -59,13 +72,24 @@ namespace Perfmon.Exporter.Core
 			ret.AppendLine(CounterType);
 			for (int i = 0; i < Instances.Count; i++)
 			{
-				if (Instances[i].InstanceName == "")
+				try
 				{
-					ret.AppendLine(InstanceFullNames[i] + " " + Instances[i].NextValue().ToString().Replace(",", "."));
+					if (Instances[i].InstanceName == "")
+					{
+						ret.AppendLine(InstanceFullNames[i] + " " + Instances[i].NextValue().ToString().Replace(",", "."));
+					}
+					else if (Parent.Instance.InstanceExists(Instances[i].InstanceName))
+					{
+						ret.AppendLine(InstanceFullNames[i] + " " + Instances[i].NextValue().ToString().Replace(",", "."));
+					}
+					else
+					{
+						Logger.LogWarning($"Cant collect. Instance not found.  counter.InstanceName=[{Instances[i].InstanceName}] counter.CategoryName=[{Instances[i].CategoryName}] counter.CounterName=[{Instances[i].CounterName}] ");
+					}
 				}
-				else if (Parent.Instance.InstanceExists(Instances[i].InstanceName))
+				catch (Exception ex)
 				{
-					ret.AppendLine(InstanceFullNames[i] + " " + Instances[i].NextValue().ToString().Replace(",", "."));
+					Logger.LogError($"counter.InstanceName=[{Instances[i].InstanceName}] counter.CategoryName=[{Instances[i].CategoryName}] counter.CounterName=[{Instances[i].CounterName}] {ex}");
 				}
 			}
 		}

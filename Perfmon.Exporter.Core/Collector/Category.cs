@@ -25,9 +25,11 @@ namespace Perfmon.Exporter.Core
 				logger.LogError($"PerformanceCounterCategory {Config.Name} does not exists");
 				throw new NotSupportedException($"PerformanceCounterCategory {Config.Name} does not exists");
 			}
+			logger.LogDebug($"PerformanceCounterCategory {Config.Name} exists");
 
 			Instance = new PerformanceCounterCategory(Config.Name);
 			InstaceNames = Instance.GetInstanceNames();
+			logger.LogDebug($"PerformanceCounterCategory {Config.Name} InstaceNames = [{string.Join(",", InstaceNames)}]");
 
 			foreach (var counterConfig in Config.Counters)
 			{
