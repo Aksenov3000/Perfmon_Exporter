@@ -26,25 +26,35 @@ namespace Perfmon.Exporter.Core
 			Config = config;
 			Logger = logger;
 
-			logger.LogDebug($"Parent.InstaceNames.Length={Parent.InstaceNames.Length} Parent.Config.SplitInstances={Parent.Config.SplitInstances}");
-			if (Parent.InstaceNames.Length == 0)
+			if (Parent.CategoryType == PerformanceCounterCategoryType.MultiInstance)
+			{
+				string[] InstaceNames = Parent.Instance.GetInstanceNames();
+				logger.LogDebug($"InstaceNames = [{string.Join(",", InstaceNames)}] InstaceNames.Length={InstaceNames.Length} Parent.Config.SplitInstances={Parent.Config.SplitInstances}");
+
+				if (InstaceNames.Length == 0)
+				{
+					Instances = new List<PerformanceCounter>();
+					Instances.Add(new PerformanceCounter(Parent.Config.Name, Config.Name));
+				}
+				else
+				{
+					if (Parent.Config.SplitInstances)
+					{
+						Instances = InstaceNames.Select(s => new PerformanceCounter(Parent.Config.Name, Config.Name, s)).ToList();
+					}
+					else
+					{
+						Instances = new List<PerformanceCounter>();
+						Instances.Add(new PerformanceCounter(Parent.Config.Name, Config.Name, "_Total"));
+					}
+				}
+				logger.LogDebug($"Instances.Count={Instances.Count}");
+			}
+			else
 			{
 				Instances = new List<PerformanceCounter>();
 				Instances.Add(new PerformanceCounter(Parent.Config.Name, Config.Name));
 			}
-			else
-			{
-				if (Parent.Config.SplitInstances)
-				{
-					Instances = Parent.InstaceNames.Select(s => new PerformanceCounter(Parent.Config.Name, Config.Name, s)).ToList();
-				}
-				else
-				{
-					Instances = new List<PerformanceCounter>();
-					Instances.Add(new PerformanceCounter(Parent.Config.Name, Config.Name, "_Total"));
-				}
-			}
-			logger.LogDebug($"Instances.Count={Instances.Count}");
 
 			CounterName = mainConfig.Prefix + "_" + Parent.Config.Prefix + "_" + Config.Prefix;
 			CounterHelp = "# HELP " + CounterName + " " + (Config.CustomDescription ? Config.Description : Instances[0].CounterHelp);

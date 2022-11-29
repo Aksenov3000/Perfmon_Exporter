@@ -8,10 +8,10 @@ namespace Perfmon.Exporter.Core
 {
 	public class Category
 	{
+		public PerfomanceCountersConfiguration MainConfig { get; set; }
 		public PerformanceCounterCategoryConfiguration Config { get; set; }
 		public PerformanceCounterCategory Instance { get; set; }
-		public List<Counter> Counters { get; set; } = new List<Counter>();
-		public string[] InstaceNames { get; set; }
+		public PerformanceCounterCategoryType CategoryType { get; set; }
 
 		private ILogger<Collector> Logger;
 
@@ -19,27 +19,32 @@ namespace Perfmon.Exporter.Core
 		{
 			Config = config;
 			Logger = logger;
+			MainConfig = mainConfig;
 
-			if (!PerformanceCounterCategory.Exists(Config.Name))
-			{
-				logger.LogError($"PerformanceCounterCategory {Config.Name} does not exists");
-				throw new NotSupportedException($"PerformanceCounterCategory {Config.Name} does not exists");
-			}
-			logger.LogDebug($"PerformanceCounterCategory {Config.Name} exists");
+			//if (!PerformanceCounterCategory.Exists(Config.Name))
+			//{
+			//	logger.LogError($"PerformanceCounterCategory {Config.Name} does not exists");
+			//	throw new NotSupportedException($"PerformanceCounterCategory {Config.Name} does not exists");
+			//}
+			//logger.LogDebug($"PerformanceCounterCategory {Config.Name} exists");
 
 			Instance = new PerformanceCounterCategory(Config.Name);
-			InstaceNames = Instance.GetInstanceNames();
-			logger.LogDebug($"PerformanceCounterCategory {Config.Name} InstaceNames = [{string.Join(",", InstaceNames)}]");
+			CategoryType = Instance.CategoryType;
+			logger.LogDebug($"PerformanceCounterCategory {Config.Name} CategoryType = [{CategoryType}]");
 
-			foreach (var counterConfig in Config.Counters)
-			{
-				Counters.Add(new Counter(mainConfig, this, counterConfig, logger));
-			}
+			//foreach (var counterConfig in Config.Counters)
+			//{
+			//	Counters.Add(new Counter(mainConfig, this, counterConfig, logger));
+			//}
 		}
 
 		public void Collect(StringBuilder ret)
 		{
-			foreach (Counter counter in Counters) counter.Collect(ret);
+			foreach (var counterConfig in Config.Counters)
+			{
+				Counter counter = new Counter(MainConfig, this, counterConfig, Logger);
+				counter.Collect(ret);
+			}
 		}
 	}
 }
