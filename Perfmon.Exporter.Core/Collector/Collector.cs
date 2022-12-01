@@ -15,12 +15,25 @@ namespace Perfmon.Exporter.Core
 
 		public Collector(IOptions<PerfomanceCountersConfiguration> config, ILogger<Collector> logger)
 		{
-			Config = config.Value;
-			Logger = logger;
-			foreach (var categoryConfig in Config.Categories)
+			DateTime start = DateTime.Now;
+			try
 			{
-				Categories.Add(new Category(Config, categoryConfig, logger));
+				logger.LogDebug($"{(int)DateTime.Now.Subtract(start).TotalMilliseconds}ms Collector constructor 01");
+				Config = config.Value;
+				Logger = logger;
+				logger.LogDebug($"{(int)DateTime.Now.Subtract(start).TotalMilliseconds}ms Collector constructor 02");
+				foreach (var categoryConfig in Config.Categories)
+				{
+					logger.LogDebug($"{(int)DateTime.Now.Subtract(start).TotalMilliseconds}ms Collector constructor 03.1 {categoryConfig.Name}");
+					Categories.Add(new Category(Config, categoryConfig, logger));
+					logger.LogDebug($"{(int)DateTime.Now.Subtract(start).TotalMilliseconds}ms Collector constructor 03.2 {categoryConfig.Name}");
+				}
 			}
+			catch (Exception ex)
+			{
+				logger.LogError($"{(int)DateTime.Now.Subtract(start).TotalMilliseconds}ms Collector constructor error {ex}");
+			}
+			logger.LogDebug($"{(int)DateTime.Now.Subtract(start).TotalMilliseconds}ms Collector constructor 04");
 		}
 
 		public void Collect(StringBuilder ret)

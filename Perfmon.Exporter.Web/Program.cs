@@ -1,16 +1,15 @@
+using NLog;
+using NLog.Web;
 using Perfmon.Exporter.Core;
 using Perfmon.Exporter.Core.Config;
 using System.Text;
-using NLog;
-using NLog.Web;
-using Microsoft.Extensions.Hosting.WindowsServices;
 
 var logger = NLog.LogManager.Setup().LoadConfigurationFromAppSettings().GetCurrentClassLogger();
 logger.Debug("init main");
 
 try
 {
-
+	DateTime start = DateTime.Now;
 	var builder = WebApplication.CreateBuilder(args);
 	builder.Services.Configure<PerfomanceCountersConfiguration>(builder.Configuration.GetSection("PerformanceCounters"));
 	builder.Services.AddSingleton<Collector>();
@@ -18,8 +17,9 @@ try
 	builder.Host.UseNLog();
 	builder.Host.UseWindowsService();
 	var app = builder.Build();
-
+	logger.Info($"init main builder took {(int)DateTime.Now.Subtract(start).TotalMilliseconds}ms");
 	_ = app.Services.GetRequiredService<Collector>();
+	logger.Info($"init main took {(int)DateTime.Now.Subtract(start).TotalMilliseconds}ms");
 
 	app.MapGet("/", async (context) =>
 	{
@@ -28,7 +28,7 @@ try
 	});
 	app.MapGet("/metrics", async (context) =>
 	{
-		context.Response.Headers.ContentType = "text/plain; version=0.0.4; charset=utf-8";
+		context.Response.Headers.ContentType = "text/plain; charset=utf-8";
 		Collector collector = context.RequestServices.GetRequiredService<Collector>();
 		StringBuilder sb = new StringBuilder();
 		collector.Collect(sb);

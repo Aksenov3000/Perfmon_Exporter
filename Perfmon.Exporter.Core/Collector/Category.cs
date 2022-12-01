@@ -12,39 +12,37 @@ namespace Perfmon.Exporter.Core
 		public PerformanceCounterCategoryConfiguration Config { get; set; }
 		public PerformanceCounterCategory Instance { get; set; }
 		public PerformanceCounterCategoryType CategoryType { get; set; }
+		public List<Counter> Counters { get; set; } = new List<Counter>();
 
 		private ILogger<Collector> Logger;
 
 		public Category(PerfomanceCountersConfiguration mainConfig, PerformanceCounterCategoryConfiguration config, ILogger<Collector> logger)
 		{
-			Config = config;
-			Logger = logger;
-			MainConfig = mainConfig;
-
-			//if (!PerformanceCounterCategory.Exists(Config.Name))
-			//{
-			//	logger.LogError($"PerformanceCounterCategory {Config.Name} does not exists");
-			//	throw new NotSupportedException($"PerformanceCounterCategory {Config.Name} does not exists");
-			//}
-			//logger.LogDebug($"PerformanceCounterCategory {Config.Name} exists");
-
-			Instance = new PerformanceCounterCategory(Config.Name);
-			CategoryType = Instance.CategoryType;
-			logger.LogDebug($"PerformanceCounterCategory {Config.Name} CategoryType = [{CategoryType}]");
-
-			//foreach (var counterConfig in Config.Counters)
-			//{
-			//	Counters.Add(new Counter(mainConfig, this, counterConfig, logger));
-			//}
+			DateTime start = DateTime.Now;
+			try
+			{
+				logger.LogDebug($"{(int)DateTime.Now.Subtract(start).TotalMilliseconds}ms Category constructor 01");
+				Config = config;
+				Logger = logger;
+				MainConfig = mainConfig;
+				logger.LogDebug($"{(int)DateTime.Now.Subtract(start).TotalMilliseconds}ms Category constructor 02");
+				Instance = new PerformanceCounterCategory(Config.Name);
+				logger.LogDebug($"{(int)DateTime.Now.Subtract(start).TotalMilliseconds}ms Category constructor 03");
+				Counters = Config
+					.Counters
+					.Select(counterConfig => new Counter(MainConfig, this, counterConfig, Logger))
+					.ToList();
+			}
+			catch (Exception ex)
+			{
+				logger.LogError($"{(int)DateTime.Now.Subtract(start).TotalMilliseconds}ms Category constructor error {ex}");
+			}
+			logger.LogDebug($"{(int)DateTime.Now.Subtract(start).TotalMilliseconds}ms Category constructor 04");
 		}
 
 		public void Collect(StringBuilder ret)
 		{
-			foreach (var counterConfig in Config.Counters)
-			{
-				Counter counter = new Counter(MainConfig, this, counterConfig, Logger);
-				counter.Collect(ret);
-			}
+			foreach (var counter in Counters) counter.Collect(ret);
 		}
 	}
 }

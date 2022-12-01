@@ -8,13 +8,32 @@ namespace Perfmon.Exporter.Core
 {
 	public class Counter
 	{
+		public class PerformanceCounterWithName
+		{
+			public PerformanceCounter Counter { get; set; }
+			public string InstanceName { get; set; }
+			public string FullInstanceName { get; set; }
+
+			public PerformanceCounterWithName(string instanceName, Counter counter)
+			{
+				if (instanceName == "")
+				{
+					Counter = new PerformanceCounter(counter.Parent.Config.Name, counter.Config.Name);
+				}
+				else
+				{
+					Counter = new PerformanceCounter(counter.Parent.Config.Name, counter.Config.Name, instanceName);
+				}
+				InstanceName = instanceName;
+				FullInstanceName = counter.CounterName + (Counter.InstanceName == "" ? "" : " {" + (counter.Parent.Config.InstanceLabel == "" ? "instance" : counter.Parent.Config.InstanceLabel) + "=\"" + Counter.InstanceName + "\"}");
+				Counter.NextValue();
+			}
+		}
 		public Category Parent { get; set; }
 		public PerformanceCounterConfiguration Config { get; set; }
-		public List<PerformanceCounter> Instances { get; set; }
-		public List<string> InstanceFullNames { get; set; } = new List<string>();
+		public Dictionary<string, PerformanceCounterWithName> Instances { get; set; } = new Dictionary<string, PerformanceCounterWithName>();
 
 		private ILogger<Collector> Logger;
-
 		private string CounterName;
 		private string CounterHelp;
 		private string CounterType;
@@ -25,84 +44,110 @@ namespace Perfmon.Exporter.Core
 			Parent = category;
 			Config = config;
 			Logger = logger;
+			CounterName = mainConfig.Prefix + "_" + Parent.Config.Prefix + "_" + Config.Prefix;
+			CounterHelp = "# HELP " + CounterName + " " + Config.Description;
+			CounterType = "# TYPE " + CounterName + " " + Config.Kind;
+		}
 
-			if (Parent.CategoryType == PerformanceCounterCategoryType.MultiInstance)
+		private void CheckInstances()
+		{
+			try
 			{
-				string[] InstaceNames = Parent.Instance.GetInstanceNames();
-				logger.LogDebug($"InstaceNames = [{string.Join(",", InstaceNames)}] InstaceNames.Length={InstaceNames.Length} Parent.Config.SplitInstances={Parent.Config.SplitInstances}");
+				string[] InstaceNames;
+				if (Parent.Instance.CategoryType == PerformanceCounterCategoryType.MultiInstance)
+				{
+					InstaceNames = Parent.Instance.GetInstanceNames();
+					Logger.LogDebug($"InstaceNames = [{string.Join(",", InstaceNames)}] InstaceNames.Length={InstaceNames.Length} Parent.Config.SplitInstances={Parent.Config.SplitInstances}");
 
-				if (InstaceNames.Length == 0)
-				{
-					Instances = new List<PerformanceCounter>();
-					Instances.Add(new PerformanceCounter(Parent.Config.Name, Config.Name));
-				}
-				else
-				{
-					if (Parent.Config.SplitInstances)
+					if (InstaceNames.Length == 0)
 					{
-						Instances = InstaceNames.Select(s => new PerformanceCounter(Parent.Config.Name, Config.Name, s)).ToList();
+						foreach (var kv in Instances) kv.Value.Counter.Dispose();
+						Instances = new Dictionary<string, PerformanceCounterWithName>();
 					}
 					else
 					{
-						Instances = new List<PerformanceCounter>();
-						Instances.Add(new PerformanceCounter(Parent.Config.Name, Config.Name, "_Total"));
-					}
-				}
-				logger.LogDebug($"Instances.Count={Instances.Count}");
-			}
-			else
-			{
-				Instances = new List<PerformanceCounter>();
-				Instances.Add(new PerformanceCounter(Parent.Config.Name, Config.Name));
-			}
+						Logger.LogDebug($"InstaceNames.Length <> 0. SplitInstances={Parent.Config.SplitInstances}");
+						if (Parent.Config.SplitInstances)
+						{
+							List<string> namesToDelete = new List<string>();
 
-			CounterName = mainConfig.Prefix + "_" + Parent.Config.Prefix + "_" + Config.Prefix;
-			CounterHelp = "# HELP " + CounterName + " " + (Config.CustomDescription ? Config.Description : Instances[0].CounterHelp);
-			CounterType = "# TYPE " + CounterName + " " + Config.Kind;
-			foreach (PerformanceCounter counter in Instances)
+							foreach (var kv in Instances)
+							{
+								if (!InstaceNames.Contains(kv.Key)) namesToDelete.Add(kv.Key);
+							}
+							Logger.LogDebug($"namesToDelete = [{string.Join(",", namesToDelete)}]");
+
+							foreach (var name in namesToDelete)
+							{
+								Instances[name].Counter.Dispose();
+								Instances.Remove(name);
+							}
+
+							foreach (string name in InstaceNames)
+							{
+								if (!Instances.ContainsKey(name))
+								{
+									Instances.Add(name, new PerformanceCounterWithName(name, this));
+									Logger.LogDebug($"Instances.Add {name}");
+								}
+							}
+						}
+						else
+						{
+							CheckName(InstaceNames, "_Total");
+						}
+					}
+					Logger.LogDebug($"Instances.Count={Instances.Count}");
+				}
+				else
+				{
+					InstaceNames = new string[] { "" };
+					CheckName(InstaceNames, "");
+				}
+			}
+			catch (Exception ex)
 			{
-				try
-				{
-					string instanceFullName = CounterName + (counter.InstanceName == "" ? "" : " {" + (Parent.Config.InstanceLabel == "" ? "instance" : Parent.Config.InstanceLabel) + "=\"" + counter.InstanceName + "\"}");
-					InstanceFullNames.Add(instanceFullName);
-					float val = counter.NextValue();
-					logger.LogDebug($"instanceFullName={instanceFullName} Val={val}");
-				}
-				catch (Exception ex)
-				{
-					Logger.LogError($"Cant Init counter. counter.InstanceName=[{counter.InstanceName}] counter.CategoryName=[{counter.CategoryName}] counter.CounterName=[{counter.CounterName}] {ex}");
-					throw;
-				}
+				Logger.LogError($"Cant CheckInstances. CounterName={CounterName} {ex}");
+				throw;
+			}
+		}
+
+		private void CheckName(string[] instaceNames, string name)
+		{
+			if (!instaceNames.Contains(name))
+			{
+				Logger.LogDebug($"namesToDelete = [{name}]");
+				Instances[name].Counter.Dispose();
+				Instances.Remove(name);
+			}
+			else if (!Instances.ContainsKey(name))
+			{
+				Instances.Add(name, new PerformanceCounterWithName(name, this));
+				Logger.LogDebug($"Instances.Add {name}");
 			}
 		}
 
 		public void Collect(StringBuilder ret)
 		{
+			CheckInstances();
+
 			ret.AppendLine(CounterHelp);
 			ret.AppendLine(CounterType);
-			for (int i = 0; i < Instances.Count; i++)
+
+			foreach (var kv in Instances)
 			{
 				try
 				{
-					if (Instances[i].InstanceName == "")
-					{
-						ret.AppendLine(InstanceFullNames[i] + " " + Instances[i].NextValue().ToString().Replace(",", "."));
-					}
-					else if (Parent.Instance.InstanceExists(Instances[i].InstanceName))
-					{
-						ret.AppendLine(InstanceFullNames[i] + " " + Instances[i].NextValue().ToString().Replace(",", "."));
-					}
-					else
-					{
-						Logger.LogWarning($"Cant collect. Instance not found.  counter.InstanceName=[{Instances[i].InstanceName}] counter.CategoryName=[{Instances[i].CategoryName}] counter.CounterName=[{Instances[i].CounterName}] ");
-					}
+					ret.AppendLine(kv.Value.FullInstanceName + " " + kv.Value.Counter.NextValue().ToString().Replace(",", "."));
 				}
 				catch (Exception ex)
 				{
-					Logger.LogError($"counter.InstanceName=[{Instances[i].InstanceName}] counter.CategoryName=[{Instances[i].CategoryName}] counter.CounterName=[{Instances[i].CounterName}] {ex}");
+					Logger.LogError($"counter.InstanceName=[{kv.Value.InstanceName}] counter.CategoryName=[{kv.Value.Counter.CategoryName}] counter.CounterName=[{kv.Value.Counter.CounterName}] {ex}");
 				}
 			}
 		}
+
+
 	}
 }
 #pragma warning restore CA1416 // Validate platform compatibility
